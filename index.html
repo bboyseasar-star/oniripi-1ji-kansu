@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>鬼リピ 〜1次関数の立式マスター〜</title>
+  <!-- Google Fonts からモダンなフォント（Outfit, Inter, 筑紫ゴシック的な日本語フォント）をインポート -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
+  <!-- アプリのスタイルシート -->
+  <link rel="stylesheet" href="style.css">
+  
+  <!-- MathJaxの設定と読み込み（数式を美しく表示するため） -->
+  <script>
+    window.MathJax = {
+      tex: {
+        inlineMath: [['\\(', '\\)']],
+        displayMath: [['\\[', '\\]']]
+      },
+      options: {
+        // MathLiveのタグなど、一部の要素をレンダリング対象外にする
+        skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code', 'annotation', 'annotation-xml', 'math-field']
+      },
+      startup: {
+        pageReady: () => {
+          return MathJax.startup.defaultPageReady().then(() => {
+            console.log('MathJax initial typesetting complete');
+          });
+        }
+      }
+    };
+  </script>
+  <!-- MathJax CDN -->
+  <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+  <!-- コンフェッティ（紙吹雪演出）用のライブラリ CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+</head>
+<body>
+
+  <!-- メインコンテナ（Chromebookで1画面に収まるように配置） -->
+  <div class="app-container">
+    
+    <!-- ==================== スタート画面 ==================== -->
+    <div id="screen-start" class="screen active">
+      <div class="title-container">
+        <div class="badge">中学2年 数学ドリル</div>
+        <h1 class="app-title">鬼リピ</h1>
+        <div class="app-subtitle">〜 1次関数の立式マスター 〜</div>
+      </div>
+      
+      <div class="info-card">
+        <p class="description">
+          文章の条件から \(y\) を \(x\) の式で表そう！<br>
+          「注水」「線香」「道のり」など、テストによく出るパターンを鬼リピして完璧にマスターするぞ！
+        </p>
+        
+        <div class="records-container">
+          <!-- 最高記録 -->
+          <div class="record-box">
+            <div class="record-title">👑 最高記録</div>
+            <div class="record-score"><span id="best-score">-</span> / 5 問正解</div>
+          </div>
+          
+          <!-- 最近の学習履歴 -->
+          <div class="history-box">
+            <div class="history-header">
+              <div class="record-title">📊 最近の学習履歴</div>
+              <button type="button" id="btn-clear-history" class="btn-text-danger" title="履歴をすべて削除">リセット</button>
+            </div>
+            <div id="history-list" class="history-list">
+              <!-- JavaScriptから動的に入ります -->
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <button id="btn-start" class="btn btn-primary btn-large">
+        ドリルを始める！
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="icon-play">
+          <path d="M8 5.14v14c0 .86.94 1.39 1.66.9l10-7c.61-.43.61-1.37 0-1.8l-10-7C8.94 3.75 8 4.28 8 5.14z"/>
+        </svg>
+      </button>
+    </div>
+    
+    <!-- ==================== ドリル画面 ==================== -->
+    <div id="screen-drill" class="screen">
+      <!-- ドリル上部のヘッダー（進捗とスコア） -->
+      <div class="drill-header">
+        <div class="progress-container">
+          <span class="progress-label">問題</span>
+          <span id="current-question-num" class="progress-number">1</span>
+          <span class="progress-separator">/</span>
+          <span id="total-questions-num" class="progress-number-total">5</span>
+        </div>
+        
+        <!-- 進行状況を示すメーター -->
+        <div class="progress-bar-bg">
+          <div id="progress-bar-fill" class="progress-bar-fill" style="width: 20%;"></div>
+        </div>
+        
+        <div class="score-badge">
+          <span>正解: </span>
+          <span id="current-score" class="score-number">0</span>
+        </div>
+      </div>
+      
+      <!-- 問題カード -->
+      <div class="question-card">
+        <div id="question-text" class="question-text">
+          <!-- ここに問題文が動的に入ります -->
+        </div>
+      </div>
+      
+      <!-- 解答入力エリア -->
+      <div class="input-section">
+        <div class="math-field-outer">
+          <div class="math-field-container">
+            <!-- MathLiveの入力フィールド。生徒自身に「y = ...」の形式で入力させます -->
+            <math-field id="answer-input" virtual-keyboard-mode="off" inputmode="latin" placeholder="例: y = 2x + 3"></math-field>
+          </div>
+        </div>
+        <div class="input-notice">※半角英数字で「y = ...」の形で入力してね</div>
+        
+        <!-- 入力補助ボタン（yや=も生徒に入力させるため、キーボードに追加しました） -->
+        <div class="keyboard-helper">
+          <button type="button" class="key-btn" data-value="y">\(y\)</button>
+          <button type="button" class="key-btn font-bold" data-value="=">=</button>
+          <button type="button" class="key-btn" data-value="x">\(x\)</button>
+          <button type="button" class="key-btn font-bold" data-value="-">-</button>
+          <button type="button" class="key-btn font-bold" data-value="+">+</button>
+          <button type="button" class="key-btn" data-value=".">.</button>
+          <button type="button" class="key-btn btn-action" id="btn-clear-input" title="入力を消す">クリア</button>
+        </div>
+      </div>
+      
+      <!-- アクションボタンと結果メッセージのコンテナ -->
+      <div class="action-section">
+        <!-- 判定結果（正解・不正解）のメッセージ表示エリア -->
+        <div id="feedback-area" class="feedback-area">
+          <div id="feedback-badge" class="feedback-badge"></div>
+          
+          <!-- 誤答時に表示される正解と解説の比較ブロック -->
+          <div id="correct-answer-block" class="correct-answer-block">
+            <div class="compare-row">
+              <div class="compare-box">
+                <span class="compare-title">あなたの解答</span>
+                <span id="user-ans-val" class="compare-val"></span>
+              </div>
+              <div class="compare-box correct">
+                <span class="compare-title">正しい答え</span>
+                <span id="correct-ans-val" class="compare-val"></span>
+              </div>
+            </div>
+            <!-- 計算の解説エリア -->
+            <div id="question-explanation" class="explanation-box"></div>
+          </div>
+        </div>
+        
+        <!-- 下部の操作ボタン -->
+        <div class="control-row">
+          <button id="btn-quit" class="btn btn-secondary">
+            中断する
+          </button>
+          
+          <button id="btn-hint" class="btn btn-warning">
+            💡 ヒントを見る
+          </button>
+          
+          <button id="btn-check" class="btn btn-primary">
+            答え合わせ
+          </button>
+          
+          <button id="btn-next" class="btn btn-success hidden">
+            次の問題へ
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="icon-next">
+              <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6-6-6z"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+      
+      <!-- ヒント表示トースト（領域） -->
+      <div id="hint-display-area" class="hint-display-area">
+        <!-- ここにヒントが動的に表示されます -->
+      </div>
+    </div>
+    
+    <!-- ==================== 結果画面 ==================== -->
+    <div id="screen-result" class="screen">
+      <div class="result-header">
+        <div class="crown-container">
+          <span id="result-emoji" class="result-emoji">🎉</span>
+        </div>
+        <h2 id="result-title" class="result-title">ドリル終了！</h2>
+        <div class="final-score-box">
+          <span class="final-score-label">今回のスコア</span>
+          <span class="final-score-val"><span id="final-correct-count">0</span> / <span id="final-total-count">5</span></span>
+          <span class="final-score-unit">問正解</span>
+        </div>
+        <p id="result-message" class="result-message">素晴らしい！全問正解です！</p>
+      </div>
+      
+      <!-- 振り返りリスト（解いた問題の全問レビュー） -->
+      <div class="review-section">
+        <h3 class="review-title">📝 今回の振り返り</h3>
+        <div id="review-list" class="review-list">
+          <!-- ここに動的に全問の振り返りリストが入ります -->
+        </div>
+      </div>
+      
+      <!-- アクションボタン群 -->
+      <div class="result-actions">
+        <button id="btn-restart" class="btn btn-secondary">
+          はじめからもう一度
+        </button>
+        <button id="btn-review-failed" class="btn btn-primary btn-shine hidden">
+          間違えた問題を復習する
+        </button>
+        <button id="btn-home" class="btn btn-success">
+          ホームへ戻る
+        </button>
+      </div>
+    </div>
+    
+  </div>
+
+  <!-- アプリの問題データ (questions.js) -->
+  <script src="questions.js"></script>
+  <!-- アプリの制御プログラム (main.js) -->
+  <script src="main.js"></script>
+  <!-- MathLive CDN（必ず</body>の直前でロードしてMathJaxによるShadow DOMの破壊を防ぐ） -->
+  <script src="https://unpkg.com/mathlive@0.98.4/dist/mathlive.min.js"></script>
+</body>
+</html>
