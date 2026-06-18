@@ -38,6 +38,7 @@
   --radius-md: 10px;
   --transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
+.emoji-icon{font-family:"Noto Color Emoji","Apple Color Emoji","Segoe UI Emoji",sans-serif!important;font-weight:400!important;font-style:normal}
 
 /* スクロールバーのカスタマイズ（美観を損ねないスリムなデザイン） */
 ::-webkit-scrollbar {
