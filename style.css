@@ -118,6 +118,27 @@ body {
   align-items: center;
   text-align: center;
   gap: 32px;
+  position: relative;
+}
+
+.legal-links {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  gap: 0.45rem;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+
+.legal-links a {
+  color: #a5b4fc;
+  text-underline-offset: 0.18em;
+}
+
+.legal-links a:hover,
+.legal-links a:focus-visible {
+  color: #c7d2fe;
 }
 
 .title-container {
@@ -955,6 +976,9 @@ math-field::part(menu-toggle) {
 .icon-play, .icon-next {
   width: 18px;
   height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* ユーティリティ */

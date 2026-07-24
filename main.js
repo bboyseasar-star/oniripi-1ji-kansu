@@ -182,13 +182,19 @@ function renderHistoryList(history) {
         const badgeClass = item.isPassed ? 'pass' : 'fail';
         const badgeText = item.isPassed ? '合格 💮' : '不合格 ❌';
         
-        itemEl.innerHTML = `
-            <span class="history-date">${item.date}</span>
-            <div class="history-score">
-                <span class="history-score-val">${item.score} / ${item.total}問</span>
-                <span class="history-badge ${badgeClass}">${badgeText}</span>
-            </div>
-        `;
+        const dateEl = document.createElement('span');
+        dateEl.className = 'history-date';
+        dateEl.textContent = String(item.date);
+        const scoreWrap = document.createElement('div');
+        scoreWrap.className = 'history-score';
+        const scoreEl = document.createElement('span');
+        scoreEl.className = 'history-score-val';
+        scoreEl.textContent = `${Number(item.score) || 0} / ${Number(item.total) || 0}問`;
+        const badgeEl = document.createElement('span');
+        badgeEl.className = `history-badge ${badgeClass}`;
+        badgeEl.textContent = badgeText;
+        scoreWrap.append(scoreEl, badgeEl);
+        itemEl.append(dateEl, scoreWrap);
         listEl.appendChild(itemEl);
     });
 }
@@ -241,6 +247,9 @@ function initDrillScreen() {
     const mf = document.getElementById('answer-input');
     mf.value = '';
     mf.disabled = false;
+    mf.readOnly = false;
+    mf.removeAttribute('read-only');
+    mf.setAttribute('contenteditable', 'true');
     
     // 問題文の表示
     const q = state.questions[state.currentIndex];
@@ -307,9 +316,19 @@ function setupMathField() {
                 .replace(/[＝]/g, '=')
                 .replace(/[．。]/g, '.');
             
-            // 入力欄をクリアして半角に直したものを挿入する
-            mf.value = '';
-            mf.insert(converted);
+            // すでに入力済みの内容を消さず、入力欄全体を半角にそろえる
+            const currentValue = mf.value || data;
+            const normalizedValue = currentValue
+                .replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0))
+                .replace(/[ａ-ｚ]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0))
+                .replace(/[Ａ-Ｚ]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0))
+                .replace(/[＋]/g, '+')
+                .replace(/[－ー−]/g, '-')
+                .replace(/[＝]/g, '=')
+                .replace(/[．。]/g, '.');
+            if (normalizedValue !== currentValue) {
+                mf.value = normalizedValue;
+            }
         }
     });
     
@@ -395,6 +414,15 @@ function normalizeLatex(latex) {
     return s;
 }
 
+function escapeHtml(value) {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 /**
  * ユーザーが入力した数式が、正解パターンのいずれかと一致するか判定します。
  * 
@@ -439,6 +467,9 @@ function checkAnswer() {
     
     state.isAnswered = true;
     mf.disabled = true; // 入力欄をロック
+    mf.readOnly = true;
+    mf.setAttribute('read-only', '');
+    mf.setAttribute('contenteditable', 'false');
     
     // ボタンの表示切り替え
     document.getElementById('btn-check').classList.add('hidden');
@@ -496,7 +527,7 @@ function checkAnswer() {
         
         // ユーザー解答と正しい答えの比較を表示
         // MathJaxで数式としてレンダリングするため、インナーHTMLに \(\) 囲みで代入します
-        document.getElementById('user-ans-val').innerHTML = `\\(${displayUserVal}\\)`;
+        document.getElementById('user-ans-val').innerHTML = `\\(${escapeHtml(displayUserVal)}\\)`;
         // 代表的な正解を表示（1つ目のパターン）
         document.getElementById('correct-ans-val').innerHTML = `\\(${q.correctAnswers[0].replace('y=', 'y = ')}\\)`;
         
@@ -527,6 +558,10 @@ function showHint() {
     const hintDisplay = document.getElementById('hint-display-area');
     
     if (state.hintCount >= q.hints.length) return;
+
+    if (state.hintCount === q.hints.length - 1 && !confirm('答えのヒントを表示すると、この問題は不正解になります。表示しますか？')) {
+        return;
+    }
     
     hintDisplay.classList.add('active');
     
@@ -560,7 +595,11 @@ function showHint() {
     if (state.hintCount === q.hints.length - 1) {
         // 最後のヒント（答え）を表示した場合はギブアップ扱いにする
         state.isAnswered = true;
-        document.getElementById('answer-input').disabled = true;
+        const answerInput = document.getElementById('answer-input');
+        answerInput.disabled = true;
+        answerInput.readOnly = true;
+        answerInput.setAttribute('read-only', '');
+        answerInput.setAttribute('contenteditable', 'false');
         
         document.getElementById('btn-check').classList.add('hidden');
         document.getElementById('btn-next').classList.remove('hidden');
@@ -699,10 +738,10 @@ function buildReviewList() {
                 <span class="review-item-num">第 ${index + 1} 問</span>
                 <span class="review-item-status ${statusClass}">${statusText}</span>
             </div>
-            <div class="review-item-text">${ans.questionText}</div>
-            <div class="review-item-answers">
-                <div>あなたの解答: <span class="review-ans ${userAnsClass}">${ans.userAnswer}</span></div>
-                ${!ans.isCorrect ? `<div>正しい答え: <span class="review-ans correct">${ans.correctAnswer}</span></div>` : ''}
+                <div class="review-item-text">${ans.questionText}</div>
+                <div class="review-item-answers">
+                <div>あなたの解答: <span class="review-ans ${userAnsClass}">${escapeHtml(ans.userAnswer)}</span></div>
+                ${!ans.isCorrect ? `<div>正しい答え: <span class="review-ans correct">${escapeHtml(ans.correctAnswer)}</span></div>` : ''}
             </div>
         `;
         listContainer.appendChild(item);

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>👹 1次関数の立式マスター</title>
-  <!-- Google Fonts からモダンなフォント（Outfit, Inter, 筑紫ゴシック的な日本語フォント）をインポート -->
+  <!-- Google Fonts から BIZ UDPGothic と Outfit を読み込み -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
@@ -77,10 +77,13 @@
       
       <button id="btn-start" class="btn btn-primary btn-large">
         ドリルを始める！
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="icon-play">
-          <path d="M8 5.14v14c0 .86.94 1.39 1.66.9l10-7c.61-.43.61-1.37 0-1.8l-10-7C8.94 3.75 8 4.28 8 5.14z"/>
-        </svg>
+        <span class="icon-play" aria-hidden="true">▶</span>
       </button>
+      <nav class="legal-links" aria-label="利用条件">
+        <a href="NOTICE.md" target="_blank" rel="noopener">利用条件・第三者ライセンス</a>
+        <span aria-hidden="true">｜</span>
+        <a href="LICENSE" target="_blank" rel="noopener">MIT License</a>
+      </nav>
     </div>
     
     <!-- ==================== ドリル画面 ==================== -->
@@ -173,9 +176,7 @@
           
           <button id="btn-next" class="btn btn-success hidden">
             次の問題へ
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="icon-next">
-              <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6-6-6z"/>
-            </svg>
+            <span class="icon-next" aria-hidden="true">›</span>
           </button>
         </div>
       </div>

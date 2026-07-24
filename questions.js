@@ -24,7 +24,7 @@
             id: 'water_tank',
             generate: function() {
                 const b = getRandomInt(2, 10); // 初期の深さ (2〜10cm)
-                const a = getRandomElement([2, 3, 4, 5, 0.5, 1.5]); // 毎分の増加量 (cm)
+                const a = getRandomElement([2, 3, 4, 5]); // 毎分の増加量 (cm)
                 
                 return {
                     id: `water_tank_${b}_${a.toString().replace('.', '_')}`,
@@ -53,11 +53,11 @@
             }
         },
         {
-            // 2. 線香の燃焼（減少・小数あり）
+            // 2. 線香の燃焼（減少）
             id: 'incense',
             generate: function() {
                 const b = getRandomInt(12, 24); // 初期の長さ (12〜24cm)
-                const a = getRandomElement([0.5, 0.6, 0.8, 1.2, 1.5, 2]); // 毎分の減少量 (cm)
+                const a = getRandomElement([1, 2, 3, 4, 5]); // 毎分の減少量 (cm)
                 
                 return {
                     id: `incense_${b}_${a.toString().replace('.', '_')}`,
@@ -226,7 +226,7 @@
                 
                 return {
                     id: `temp_${b}_${a}`,
-                    text: `地上（標高 \\(0\\text{km}\\)）の気温が \\(${b}\\text{℃}\\) のとき、上空へ標高が \\(1\\text{km}\\) 上がるごとに気温が \\(${a}\\text{℃}\\) ずつ下がります。標高 \\(x\\text{km}\\) のときの気温を \\(y\\text{℃}\\) とするとき、\\(y\\) を \\(x\\) の式で表しなさい。`,
+                    text: `地上（標高 \\(0\\text{km}\\)）の気温が \\(${b}\\text{℃}\\) のとき、この問題では、上空へ標高が \\(1\\text{km}\\) 上がるごとに気温が \\(${a}\\text{℃}\\) ずつ下がるものとします。標高 \\(x\\text{km}\\) のときの気温を \\(y\\text{℃}\\) とするとき、\\(y\\) を \\(x\\) の式で表しなさい。`,
                     correctAnswers: [
                         `y=-${a}x+${b}`,
                         `y=${b}-${a}x`
