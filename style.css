@@ -583,6 +583,22 @@ math-field::part(menu-toggle) {
   color: #fb7185;
 }
 
+/* △（分母のマイナス・0点） */
+.feedback-badge.partial {
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.5);
+  color: #fbbf24;
+}
+
+/* 判定の一言（「『y =』から書いて、式で表そう」など） */
+.feedback-msg {
+  font-size: 0.95rem;
+  font-weight: 700;
+  text-align: center;
+  color: #fde68a;
+}
+.feedback-msg.hidden { display: none; }
+
 /* 誤答時比較ブロック */
 .correct-answer-block {
   display: none;
@@ -825,6 +841,11 @@ math-field::part(menu-toggle) {
   color: #fb7185;
 }
 
+.review-item-status.partial {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+}
+
 .review-item-text {
   font-size: 0.85rem;
   color: #cbd5e1;
@@ -995,4 +1016,42 @@ math-field::part(menu-toggle) {
   margin-top: 6px;
   margin-bottom: 8px;
   text-align: center;
+}
+
+/* 空欄などで採点せずに書き直しを促すときの案内 */
+.input-notice.is-alert {
+  color: #fb7185;
+  font-weight: 700;
+}
+
+/* 画面内の確認ダイアログ */
+.modal-overlay { position: fixed; inset: 0; z-index: 1000; background: rgba(2, 6, 23, 0.7); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.modal-overlay.hidden { display: none; }
+.modal-card { background: #141a2d; border: 1px solid var(--card-border); border-radius: 18px; width: min(420px, 92vw); padding: 22px 20px 18px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 10px; box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5); }
+.modal-icon { font-size: 2.2rem; line-height: 1; }
+.modal-title { font-size: 1.15rem; font-weight: 900; color: var(--text-main); margin: 0; }
+.modal-message { font-size: 0.95rem; line-height: 1.6; color: var(--text-muted); white-space: pre-line; margin: 0; }
+.modal-actions { display: flex; gap: 10px; width: 100%; margin-top: 6px; }
+.modal-btn { flex: 1; min-height: 44px; border: none; border-radius: 12px; cursor: pointer; font-family: inherit; font-weight: 700; font-size: 0.95rem; }
+.modal-btn--cancel { background: transparent; color: var(--text-muted); border: 1px solid var(--secondary); }
+.modal-btn--ok { background: var(--primary); color: #fff; }
+.modal-card.is-danger .modal-btn--ok { background: var(--error); }
+.modal-btn.hidden { display: none; }
+
+/* 採点後・ギブアップ後は入力補助ボタンと案内をたたみ、その分を解説に回す（低い画面でも解説が読める） */
+#screen-drill.is-answered .keyboard-helper,
+#screen-drill.is-answered .input-notice { display: none; }
+#screen-drill.is-answered .input-section { margin-bottom: 8px; }
+#screen-drill.is-answered .hint-display-area { display: none; }
+.explanation-box { min-height: 64px; }
+.hint-answer { color: #fca5a5; font-weight: 700; }
+.hint-display-area { margin-top: 0; margin-bottom: 8px; flex-shrink: 0; }
+@media (max-height: 680px) {
+  .question-card { padding: 10px 14px; }
+  .question-text { font-size: 0.95rem; line-height: 1.5; }
+  .input-section { gap: 6px; margin-bottom: 8px; }
+  .compare-box { padding: 4px 10px; }
+  .compare-val { font-size: 1.1rem; }
+  .feedback-area { gap: 6px; margin-bottom: 8px; }
+  .hint-display-area { max-height: 64px; padding: 6px 12px; }
 }

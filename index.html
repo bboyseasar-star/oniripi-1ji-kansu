@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
   <!-- アプリのスタイルシート -->
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=20261018-3">
   
   <!-- MathJaxの設定と読み込み（数式を美しく表示するため） -->
   <script>
@@ -118,10 +118,10 @@
         <div class="math-field-outer">
           <div class="math-field-container">
             <!-- MathLiveの入力フィールド。生徒自身に「y = ...」の形式で入力させます -->
-            <math-field id="answer-input" virtual-keyboard-mode="off" inputmode="latin" placeholder="例: y = 2x + 3"></math-field>
+            <math-field id="answer-input" placeholder="例: y = 2x + 3" aria-label="y を x の式で"></math-field>
           </div>
         </div>
-        <div class="input-notice">※半角英数字で「y = ...」の形で入力してね</div>
+        <div class="input-notice">※「y = ...」の形で入力してね（全角でも大丈夫）</div>
         
         <!-- 入力補助ボタン（yや=も生徒に入力させるため、キーボードに追加しました） -->
         <div class="keyboard-helper">
@@ -135,11 +135,17 @@
         </div>
       </div>
       
+      <!-- ヒント表示（入力欄の下。出ても下のボタンの位置は動かない） -->
+      <div id="hint-display-area" class="hint-display-area">
+        <!-- ここにヒントが動的に表示されます -->
+      </div>
+
       <!-- アクションボタンと結果メッセージのコンテナ -->
       <div class="action-section">
         <!-- 判定結果（正解・不正解）のメッセージ表示エリア -->
         <div id="feedback-area" class="feedback-area">
           <div id="feedback-badge" class="feedback-badge"></div>
+          <div id="feedback-msg" class="feedback-msg hidden"></div>
           
           <!-- 誤答時に表示される正解と解説の比較ブロック -->
           <div id="correct-answer-block" class="correct-answer-block">
@@ -179,10 +185,6 @@
         </div>
       </div>
       
-      <!-- ヒント表示トースト（領域） -->
-      <div id="hint-display-area" class="hint-display-area">
-        <!-- ここにヒントが動的に表示されます -->
-      </div>
     </div>
     
     <!-- ==================== 結果画面 ==================== -->
@@ -224,10 +226,25 @@
     
   </div>
 
+  <!-- 画面内の確認ダイアログ（ブラウザ標準の confirm / alert の置き換え） -->
+  <div id="modal-overlay" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal-card" id="modal-card">
+      <div class="modal-icon" id="modal-icon">⚠️</div>
+      <h2 class="modal-title" id="modal-title">確認</h2>
+      <p class="modal-message" id="modal-message"></p>
+      <div class="modal-actions">
+        <button id="modal-cancel" class="modal-btn modal-btn--cancel">キャンセル</button>
+        <button id="modal-ok" class="modal-btn modal-btn--ok">OK</button>
+      </div>
+    </div>
+  </div>
+
   <!-- アプリの問題データ (questions.js) -->
-  <script src="questions.js"></script>
+  <!-- 採点部品（共通の写し。手で直さない） -->
+  <script src="grader-core.js?v=20261018-3"></script>
+  <script src="questions.js?v=20261018-3"></script>
   <!-- アプリの制御プログラム (main.js) -->
-  <script src="main.js"></script>
+  <script src="main.js?v=20261018-3"></script>
   <!-- MathLive CDN（必ず</body>の直前でロードしてMathJaxによるShadow DOMの破壊を防ぐ） -->
   <script src="https://unpkg.com/mathlive@0.98.4/dist/mathlive.min.js"></script>
 </body>

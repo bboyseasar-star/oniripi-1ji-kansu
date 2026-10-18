@@ -27,7 +27,11 @@ window.addEventListener('DOMContentLoaded', () => {
     // イベントリスナーの登録
     document.getElementById('btn-start').addEventListener('click', startDrill);
     document.getElementById('btn-check').addEventListener('click', checkAnswer);
-    document.getElementById('btn-next').addEventListener('click', nextQuestion);
+    // マウス・タッチのクリック（detail>0）だけ、締め切った直後の連打を受けない。Enter（detail=0）はそのまま進む
+    document.getElementById('btn-next').addEventListener('click', (e) => {
+        if (e.detail > 0 && Date.now() < nextReadyAt) return;
+        nextQuestion();
+    });
     document.getElementById('btn-hint').addEventListener('click', showHint);
     document.getElementById('btn-quit').addEventListener('click', quitDrill);
     document.getElementById('btn-restart').addEventListener('click', restartDrill);
@@ -35,8 +39,8 @@ window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btn-home').addEventListener('click', goHome);
     document.getElementById('btn-clear-history').addEventListener('click', clearPlayHistory);
     
-    // MathLive入力欄の初期化
-    setupMathField();
+    // MathLive入力欄の初期化（Enter の設定は欄ごとに1回だけ）
+    initAnswerField();
 });
 
 // ==================== ハイスコア管理 ====================
@@ -133,8 +137,8 @@ function savePlayHistory(score, total) {
     }
 }
 
-function clearPlayHistory() {
-    if (confirm('これまでの学習履歴と最高記録をすべて消去しますか？（この操作は取り消せません）')) {
+async function clearPlayHistory() {
+    if (await showConfirm({ title: '履歴を消す？', message: 'これまでの学習履歴と最高記録をすべて消します。\n（この操作は取り消せません）', okText: '消す', danger: true })) {
         try {
             localStorage.removeItem('oniripi_1ji_history');
             localStorage.removeItem('oniripi_1ji_best');
@@ -144,14 +148,12 @@ function clearPlayHistory() {
             // 表示の更新
             loadBestScore();
             loadPlayHistory();
-            alert('履歴をリセットしました。');
         } catch (e) {
             console.warn('localStorage clear failed:', e);
             playHistoryInMemory = [];
             bestScoreInMemory = null;
             loadBestScore();
             loadPlayHistory();
-            alert('履歴をリセットしました。');
         }
     }
 }
@@ -235,6 +237,12 @@ function initDrillScreen() {
     
     // UI要素のリセット
     document.getElementById('feedback-area').classList.remove('active');
+    document.getElementById('feedback-msg').classList.add('hidden');
+    document.getElementById('screen-drill').classList.remove('is-answered');
+    clearTimeout(noticeTimer);
+    const notice = document.querySelector('.input-notice');
+    if (notice) { notice.textContent = INPUT_NOTICE; notice.classList.remove('is-alert'); }
+    document.getElementById('feedback-msg').textContent = '';
     document.getElementById('correct-answer-block').classList.remove('active');
     document.getElementById('hint-display-area').classList.remove('active');
     document.getElementById('hint-display-area').innerHTML = '';
@@ -267,151 +275,121 @@ function initDrillScreen() {
     }
     
     // 入力欄にフォーカスを当てる
-    setTimeout(() => {
-        mf.focus();
-    }, 100);
+    setTimeout(() => focusField(mf), 100);
 }
 
-// ==================== MathLive入力とIME対策 ====================
-function setupMathField() {
+// 欄にカーソルを戻す。締め切り→解除のあと MathLive 0.98.4 の focus() が効かないことがあるので、
+// 効かなかったときは欄の中の入力の受け口（keyboard-sink）に直接フォーカスする
+function focusField(mf) {
+  if (!mf) return;
+  try { mf.focus(); } catch (e) {}
+  if (document.activeElement !== mf) {
+    const sink = mf.shadowRoot && mf.shadowRoot.querySelector('.ML__keyboard-sink');
+    if (sink) { try { sink.focus(); } catch (e) {} }
+  }
+}
+// 欄の Enter（物理キーボードの keydown は部品が受ける）と、仮想キーボードの ⏎ をまとめて1つの処理にする。
+// MathLive 0.98.4 の仮想キーボードの ⏎ は keydown を出さず、beforeinput（inputType 'insertLineBreak'）だけが届く。
+// 物理キーボードの Enter では beforeinput は届かないが、念のため 350ms 以内の2回目は受けない（二重採点よけ）。
+function bindFieldEnter(mf, fn) {
+  let last = 0;
+  const run = () => { const t = Date.now(); if (t - last < 350) return; last = t; fn(); };
+  GraderCore.setupMathField(mf, { onEnter: run });
+  mf.addEventListener('beforeinput', e => { if (e.inputType === 'insertLineBreak') { e.preventDefault(); run(); } });
+}
+// 締め切ったら仮想キーボードを閉じる（「次へ」を隠さないように）
+function closeVirtualKeyboard(mf) {
+  try { if (window.mathVirtualKeyboard) window.mathVirtualKeyboard.hide(); } catch (e) {}
+  try { if (mf) mf.blur(); } catch (e) {}
+}
+
+// ==================== MathLive入力欄の初期化（1回だけ） ====================
+// 値の書き換え（全角→半角など）はしない。全角・長音の負号・「．」は採点のときに部品がそろえる。
+let answerFieldReady = false;
+function initAnswerField() {
     const mf = document.getElementById('answer-input');
-    if (!mf) return;
-    
-    // 1. MathLive の Shadow DOM の中にある隠し入力エリア（textarea）を強制的に英語モードにする関数
-    function enforceShadowDOMInputmode() {
-        if (mf.shadowRoot) {
-            const textarea = mf.shadowRoot.querySelector('textarea');
-            if (textarea) {
-                // オートフォーカス時に半角英数字入力をOSに促す設定をすべて付与
-                textarea.setAttribute('inputmode', 'latin');
-                textarea.setAttribute('autocorrect', 'off');
-                textarea.setAttribute('autocapitalize', 'off');
-                textarea.setAttribute('spellcheck', 'false');
-                
-                // Chromeなどの一部ブラウザでIME状態をリセットするためのハック
-                // キーボードイベントの初期入力モードを英字に固定させる
-                textarea.lang = 'en-US';
-            }
-        }
+    if (!mf || answerFieldReady) return;
+    answerFieldReady = true;
+
+    const setup = () => bindFieldEnter(mf, () => { if (!state.isAnswered) checkAnswer(); else nextQuestion(); });
+    // 定義前の欄に設定を書き込まないよう、math-field の定義を待ってから1回だけ設定する
+    if (window.customElements && customElements.whenDefined) {
+        customElements.whenDefined('math-field').then(setup).catch(setup);
+    } else {
+        setup();
     }
-    
-    // 初回ロード時と、Shadow DOM が構築されるのを待って適用
-    enforceShadowDOMInputmode();
-    setTimeout(enforceShadowDOMInputmode, 500);
-    
-    // 2. フォーカス時に半角英数字入力を強制する属性を設定
-    mf.setAttribute('inputmode', 'latin');
-    
-    // 3. Chromebookで日本語入力（IME）のまま入力された全角文字を監視し、半角に自動変換する
-    mf.addEventListener('compositionend', (ev) => {
-        const data = ev.data;
-        if (data) {
-            // 全角英数字や記号を半角にマッピング
-            const converted = data
-                .replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0))
-                .replace(/[ａ-ｚ]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0))
-                .replace(/[Ａ-Ｚ]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0))
-                .replace(/[＋]/g, '+')
-                .replace(/[－ー−]/g, '-')
-                .replace(/[＝]/g, '=')
-                .replace(/[．。]/g, '.');
-            
-            // すでに入力済みの内容を消さず、入力欄全体を半角にそろえる
-            const currentValue = mf.value || data;
-            const normalizedValue = currentValue
-                .replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0))
-                .replace(/[ａ-ｚ]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0))
-                .replace(/[Ａ-Ｚ]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0))
-                .replace(/[＋]/g, '+')
-                .replace(/[－ー−]/g, '-')
-                .replace(/[＝]/g, '=')
-                .replace(/[．。]/g, '.');
-            if (normalizedValue !== currentValue) {
-                mf.value = normalizedValue;
-            }
-        }
-    });
-    
-    // フォーカスを得るたびに英数字モードを指定し、Shadow DOM内も更新
-    mf.addEventListener('focus', () => {
-        mf.setAttribute('inputmode', 'latin');
-        enforceShadowDOMInputmode();
-    });
-    
-    // 4. 入力補助キーボードのボタンイベント登録
+
+    // 入力補助キーボードのボタン
     document.querySelectorAll('.key-btn').forEach(btn => {
         if (btn.id === 'btn-clear-input') return;
-        
         btn.addEventListener('click', (e) => {
             e.preventDefault();
+            if (state.isAnswered) return;
             const val = btn.getAttribute('data-value');
-            
-            try {
-                mf.insert(val);
-            } catch (err) {
-                mf.value += val;
-            }
+            try { mf.insert(val); } catch (err) { mf.value += val; }
             mf.focus();
         });
     });
-    
-    // クリアボタンの処理
+
+    // クリアボタン
     document.getElementById('btn-clear-input').addEventListener('click', (e) => {
         e.preventDefault();
+        if (state.isAnswered) return;
         mf.value = '';
         mf.focus();
     });
-    
-    // Enterキーが押されたら答え合わせを実行する
-    mf.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            if (!state.isAnswered) {
-                checkAnswer();
-            } else {
-                nextQuestion();
-            }
-        }
-    });
 }
 
-// ==================== LaTeXの正規化と正誤判定 ====================
-
-/**
- * MathLiveの出力するLaTeXの表記の揺れを吸収し、判定しやすい形に正規化します。
- * 
- * @param {string} latex 正規化対象のLaTeX文字列
- * @returns {string} スペースなどが除かれたクリーンな文字列
- */
-function normalizeLatex(latex) {
-    if (!latex) return '';
-    let s = latex.toString().replace(/\s+/g, ''); // すべてのスペースを削除
-    
-    // MathLive特有の余計な修飾コマンドを削除
-    s = s.replace(/\\left|\\right|\\mleft|\\mright|\\,|\\cdot|\\operatorname/g, '');
-    
-    // 記号の統一（等号、不等号、プラスマイナス）
-    s = s.replace(/\\pm/g, '±')
-         .replace(/\\lt/g, '<')
-         .replace(/\\gt/g, '>')
-         .replace(/\\le/g, '≤')
-         .replace(/\\ge/g, '≥');
-         
-    // 分数表記のブレース統一（1文字の場合のブレース省略補完）
-    // 例: \frac12 -> \frac{1}{2}
-    s = s.replace(/\\frac([^{])([^{])/g, '\\frac{$1}{$2}');
-    s = s.replace(/\\frac{([^{])}([^{])/g, '\\frac{$1}{$2}');
-    s = s.replace(/\\frac([^{]){([^{]+)}/g, '\\frac{$1}{$2}');
-    
-    // 負の分数の表記揺れ統一
-    // 例: -\frac{a}{b} と \frac{-a}{b} を同じ \frac{-a}{b} に統一する
-    s = s.replace(/-\\frac{([^}]+)}{([^}]+)}/g, '\\frac{-$1}{$2}');
-    
-    // 累乗表記のブレース統一
-    // 例: ^2 -> ^{2}
-    s = s.replace(/\^([^{])/g, '^{$1}');
-    
-    return s;
+// ==================== 正誤判定（DOM に触らない。回帰テストからも呼ぶ） ====================
+// 部品 GraderCore で判定する。問題文はどれも「y を x の式で表しなさい」なので、
+// 左右の入れ替え（-x+15=y）は ×「問題の指示に合わせて、y= の形で書こう」。
+// アプリ側で足す決まり:
+//   y= の無い式は ×「『y =』から書いて、式で表そう」、1x・-1x は ×「式は合っています。1x は x と書こう」、
+//   空欄・空の枠は採点しない（status 'empty'）。
+const KANSU_MESSAGES = {
+    noEquals: '『y =』から書いて、式で表そう',
+    oneCoef: '式は合っています。1x は x と書こう',
+    unit: '単位は付けずに、式だけを書こう',
+    emptySlot: '空いている枠（□）があるよ。数を入れてから答え合わせしよう',
+    empty: '答えを入力してね！'
+};
+// 係数の 1 を書いた x（1x・-1x・1.0x・1·x・x·1・(-1)x）があるか。正規化した式（GraderCore.normalize の s）を見る。
+// 11x・0.1x・1.05x・\frac{1}{2}x は含めない。値が正しいときだけ使う（未約分の \frac{2}{1}x などは部品が先に×にする）
+function hasOneCoef(s) {
+    s = String(s || '');
+    return /(^|[^0-9.])1(?:\.0+)?\*?x/.test(s)          // 1x・1.0x・1*x（-1x もここ）
+        || /x\*1(?:\.0+)?(?![0-9.])/.test(s)              // x*1
+        || /[({]\s*[-+]?1(?:\.0+)?\s*[)}]\*?x/.test(s)    // (-1)x・(1)x・{1}x
+        || /x\*[({]\s*[-+]?1(?:\.0+)?\s*[)}]/.test(s);   // x*(-1)
+}
+// 式の終わりに単位（円・cm・g・℃ など）を付けたか
+const UNIT_TAIL = /(\\(?:text|mathrm|operatorname)\{[^{}]*\}|円|個|分|度|kg|km|mm|cm|m|g|L|\u2103|\u00B0C?|\^\{?\\(?:circ|degree)\}?C?|\\degree(?:\s*C)?)\s*$/; // ° は \degree・^{\degree}・{}^{\degree}・° のどれでも
+function hasUnitTail(raw) {
+    const s = String(raw || '').replace(/[\uFF01-\uFF5E]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).trim();
+    return UNIT_TAIL.test(s);
+}
+// 中身の無い枠：空の {}（\frac{}{}・y={}x など。MathLive が \placeholder を出さずに返すことがある）、□（\square）。
+// {}^{\degree} のような「添字の土台」の {} は枠ではないので除く
+function hasEmptyFracBox(raw) {
+  const s = String(raw || '');
+  return /\{\s*\}(?!\s*[\^_])/.test(s) || /\\square(?![A-Za-z])|\u25A1/.test(s);
+}
+function gradeAnswer(q, raws) {
+    const raw = raws && raws.length ? raws[0] : '';
+    // 空の枠が残っている（分数の枠だけ出した場合も）→ 枠のことを言って書き直し。何も無い → 入力を促す
+    if (GraderCore.hasEmptySlot(raw) || hasEmptyFracBox(raw)) return { status: 'empty', reason: 'emptySlot' };
+    if (GraderCore.isBlank(raw)) return { status: 'empty', reason: 'empty' };
+    const n = GraderCore.normalize(raw);
+    if (n.s != null && n.s.indexOf('=') < 0) return { status: 'wrong', reason: 'noEquals' };
+    const r = GraderCore.gradeEquation(raw, q.correctAnswers[0], { mode: 'solved', vars: ['x', 'y'], allowSwap: false });
+    if (r.status === 'correct' && hasOneCoef(n.s)) return { status: 'wrong', reason: 'oneCoef', swapped: r.swapped };
+    if (r.status !== 'correct' && hasUnitTail(raw)) return { status: 'wrong', reason: 'unit' };
+    return r;
+}
+function gradeMessage(r) {
+    if (!r) return '';
+    if (Object.prototype.hasOwnProperty.call(KANSU_MESSAGES, r.reason)) return KANSU_MESSAGES[r.reason];
+    return GraderCore.message(r);
 }
 
 function escapeHtml(value) {
@@ -422,145 +400,176 @@ function escapeHtml(value) {
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
 }
+// 生徒の入力（MathLive の LaTeX）を、値を読み替えずに MathJax で出せる形にする
+function displayLatex(raw) {
+    return String(raw || '')
+        .replace(/[\uFF01-\uFF5E]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)) // 全角は半角にそろえて見せる
+        .replace(/[\u2212\u30FC\uFF70\u2010-\u2015]/g, '-')
+        .replace(/\\mleft/g, '\\left').replace(/\\mright/g, '\\right')
+        .replace(/(?:\{\s*\})?\^\{?\\degree\}?|\\degree(?![A-Za-z])/g, '^{\\circ}') // ° は MathJax が知る ^{\circ} で見せる
+        .replace(/\\placeholder(?:\[[^\]]*\])?\{[^{}]*\}/g, '\\square')
+        .replace(/(?<![0-9.])([0-9]+)\/([0-9]+)(?![0-9.])/g, '\\frac{$1}{$2}') // 1/2 は縦分数で見せる（採点では部品が同じ値として読む）
+        .replace(/\\differentialD/g, 'd').replace(/\\exponentialE/g, 'e').replace(/\\imaginaryI/g, 'i');
+}
+function correctLatex(q) { return q.correctAnswers[0].replace('y=', 'y = '); }
 
-/**
- * ユーザーが入力した数式が、正解パターンのいずれかと一致するか判定します。
- * 
- * @param {string} userInput ユーザーの入力（MathLive値）
- * @param {Array} correctAnswers 正解のLaTeX配列 (例: ["y=2x+3", "y=3+2x"])
- * @returns {boolean} 正解ならtrue
- */
-function judgeAnswer(userInput, correctAnswers) {
-    // 1. 入力値のクリーンアップ（スペース等を詰める）
-    let cleanInput = userInput.replace(/\s+/g, '');
-    
-    // 2. 「y = 」から入力させたいので、y= で始まっていない場合はその時点で不正解とする
-    if (!cleanInput.startsWith('y=')) {
-        return false;
-    }
-    
-    // 3. ユーザー入力を正規化
-    const normalizedInput = normalizeLatex(cleanInput);
-    
-    // 4. 定義されたすべての正解パターンと照合
-    for (const correct of correctAnswers) {
-        const normalizedCorrect = normalizeLatex(correct);
-        if (normalizedInput === normalizedCorrect) {
-            return true;
+// 入力欄の下の案内を一時的に注意文にする（採点せずに書き直しを促すとき）
+const INPUT_NOTICE = '※「y = ...」の形で入力してね（全角でも大丈夫）';
+let noticeTimer = null;
+function flashNotice(msg) {
+    const el = document.querySelector('.input-notice');
+    if (!el) return;
+    el.textContent = msg;
+    el.classList.add('is-alert');
+    clearTimeout(noticeTimer);
+    noticeTimer = setTimeout(() => { el.textContent = INPUT_NOTICE; el.classList.remove('is-alert'); }, 1800);
+}
+
+// 「答え合わせ」の連打で、同じ位置に出る「次の問題へ」まで押してしまわないようにする
+const NEXT_GUARD_MS = 400;
+let nextReadyAt = 0;
+
+// ギブアップしたときの表示（×と同じ流れ：正しい答えと解説を見せる）
+function showGiveUpFeedback(q, typed) {
+    const feedbackArea = document.getElementById('feedback-area');
+    const badge = document.getElementById('feedback-badge');
+    document.getElementById('feedback-msg').classList.add('hidden');
+    feedbackArea.classList.add('active');
+    badge.textContent = '🏳️ ギブアップ';
+    badge.className = 'feedback-badge wrong';
+    document.getElementById('user-ans-val').innerHTML = typed.trim() ? `\\(${escapeHtml(displayLatex(typed))}\\)` : '（なし）';
+    document.getElementById('correct-ans-val').innerHTML = `\\(${correctLatex(q)}\\)`;
+    document.getElementById('question-explanation').innerHTML = q.explanation;
+    document.getElementById('correct-answer-block').classList.add('active');
+    if (window.MathJax && MathJax.typesetPromise) MathJax.typesetPromise([feedbackArea]).catch(() => {});
+}
+
+// 画面内の確認ダイアログ。Promise で true/false を返す
+function showConfirm({ title, message, okText = 'OK', cancelText = 'キャンセル', danger = false }) {
+    return new Promise(resolve => {
+        const ov = document.getElementById('modal-overlay'), card = document.getElementById('modal-card');
+        const okBtn = document.getElementById('modal-ok'), cancelBtn = document.getElementById('modal-cancel');
+        document.getElementById('modal-title').textContent = title;
+        document.getElementById('modal-message').textContent = message;
+        okBtn.textContent = okText; cancelBtn.textContent = cancelText;
+        document.getElementById('modal-icon').textContent = danger ? '⚠️' : '❓';
+        card.classList.toggle('is-danger', danger);
+        ov.classList.remove('hidden');
+        const done = v => { ov.classList.add('hidden'); cleanup(); resolve(v); };
+        const onOk = () => done(true), onCancel = () => done(false);
+        const onBg = e => { if (e.target === ov) done(false); };
+        function cleanup() {
+            okBtn.removeEventListener('click', onOk);
+            cancelBtn.removeEventListener('click', onCancel);
+            ov.removeEventListener('click', onBg);
         }
-    }
-    
-    return false;
+        okBtn.addEventListener('click', onOk);
+        cancelBtn.addEventListener('click', onCancel);
+        ov.addEventListener('click', onBg);
+        setTimeout(() => { try { cancelBtn.focus(); } catch (e) {} }, 0);
+    });
+}
+
+function lockAnswerField(mf) {
+    document.getElementById('screen-drill').classList.add('is-answered');
+    closeVirtualKeyboard(mf);
+    mf.disabled = true;
+    mf.readOnly = true;
+    mf.setAttribute('read-only', '');
+    mf.setAttribute('contenteditable', 'false');
 }
 
 // ==================== 答え合わせ処理 ====================
 function checkAnswer() {
+    if (state.isAnswered) return; // 採点済み・ギブアップ後は二重に採点しない
     const mf = document.getElementById('answer-input');
-    const userVal = mf.value.trim();
-    
-    // 未入力の場合は何もしない
-    if (!userVal) {
-        alert('答えを入力してください。');
+    const userVal = mf.value || '';
+    const q = state.questions[state.currentIndex];
+    const r = gradeAnswer(q, [userVal]);
+
+    // 空欄・空の枠は採点せず、書き直しを促す（この問題は締め切らない）
+    if (r.status === 'empty') {
+        flashNotice(gradeMessage(r));
         mf.focus();
         return;
     }
-    
+
     state.isAnswered = true;
-    mf.disabled = true; // 入力欄をロック
-    mf.readOnly = true;
-    mf.setAttribute('read-only', '');
-    mf.setAttribute('contenteditable', 'false');
-    
-    // ボタンの表示切り替え
+    nextReadyAt = Date.now() + NEXT_GUARD_MS;
+    lockAnswerField(mf);
+
     document.getElementById('btn-check').classList.add('hidden');
     document.getElementById('btn-next').classList.remove('hidden');
     document.getElementById('btn-hint').classList.add('hidden');
-    
-    const q = state.questions[state.currentIndex];
-    
-    // 正誤判定
-    const isCorrect = judgeAnswer(userVal, q.correctAnswers);
-    
-    // フィードバック領域の初期化
+
+    const isCorrect = r.status === 'correct';
+    const isTri = r.status === 'negDenominator';
     const feedbackArea = document.getElementById('feedback-area');
     const feedbackBadge = document.getElementById('feedback-badge');
+    const feedbackMsg = document.getElementById('feedback-msg');
     const correctBlock = document.getElementById('correct-answer-block');
-    
     feedbackArea.classList.add('active');
-    
-    // ユーザー解答の表示用（スペースを入れて見やすく整形する。y= で始まっていれば y = に変換する）
-    let displayUserVal = userVal.replace(/\s+/g, '');
-    if (displayUserVal.startsWith('y=')) {
-        displayUserVal = displayUserVal.replace('y=', 'y = ');
-    }
-    
-    // 記録用のオブジェクトを作成（MathJaxで数式レンダリングさせるため \(\) で囲む）
-    const record = {
+
+    const shownUser = displayLatex(userVal);
+    state.answers.push({
         questionText: q.text,
-        userAnswer: `\\(${displayUserVal}\\)`,
-        correctAnswer: `\\(${q.correctAnswers[0].replace('y=', 'y = ')}\\)`,
-        isCorrect: isCorrect
-    };
-    state.answers.push(record);
-    
+        userAnswer: `\\(${shownUser}\\)`,
+        correctAnswer: `\\(${correctLatex(q)}\\)`,
+        isCorrect: isCorrect,
+        status: r.status
+    });
+
+    const msg = gradeMessage(r);
+    feedbackMsg.textContent = msg;
+    feedbackMsg.classList.toggle('hidden', !msg || isCorrect);
+
     if (isCorrect) {
-        // --- 正解の場合 ---
         state.score++;
         document.getElementById('current-score').textContent = state.score;
-        
         feedbackBadge.textContent = '⭕ 正解！';
         feedbackBadge.className = 'feedback-badge correct';
-        correctBlock.classList.remove('active'); // 解説は隠す
-        
-        // ミニ紙吹雪演出（canvas-confetti）
+        correctBlock.classList.remove('active');
         if (window.confetti) {
-            confetti({
-                particleCount: 50,
-                spread: 60,
-                origin: { y: 0.7 }
-            });
+            confetti({ particleCount: 50, spread: 60, origin: { y: 0.7 } });
         }
     } else {
-        // --- 不正解の場合 ---
-        feedbackBadge.textContent = '❌ 残念、まちがい！';
-        feedbackBadge.className = 'feedback-badge wrong';
-        
-        // ユーザー解答と正しい答えの比較を表示
-        // MathJaxで数式としてレンダリングするため、インナーHTMLに \(\) 囲みで代入します
-        document.getElementById('user-ans-val').innerHTML = `\\(${escapeHtml(displayUserVal)}\\)`;
-        // 代表的な正解を表示（1つ目のパターン）
-        document.getElementById('correct-ans-val').innerHTML = `\\(${q.correctAnswers[0].replace('y=', 'y = ')}\\)`;
-        
-        // 解説文章を設定
-        const expBox = document.getElementById('question-explanation');
-        expBox.innerHTML = q.explanation;
-        
+        // ×と△（分母のマイナス・0点）は同じ流れ：正しい答えを見せて復習リストへ
+        feedbackBadge.textContent = isTri ? '🔺 おしい！（0点）' : '❌ 残念、まちがい！';
+        feedbackBadge.className = 'feedback-badge ' + (isTri ? 'partial' : 'wrong');
+        document.getElementById('user-ans-val').innerHTML = `\\(${escapeHtml(shownUser)}\\)`;
+        document.getElementById('correct-ans-val').innerHTML = `\\(${correctLatex(q)}\\)`;
+        document.getElementById('question-explanation').innerHTML = q.explanation;
         correctBlock.classList.add('active');
-        
-        // 数式を美しく表示するため MathJax に再レンダリングを依頼
-        if (window.MathJax) {
-            MathJax.typesetPromise([document.getElementById('correct-answer-block')]).catch(err => {
-                console.error('MathJax explanation rendering error:', err);
-            });
-        }
-        
-        // 復習用に間違えた問題を記録
-        // すでに登録されていないかチェックして重複登録を防ぐ
         if (!state.failedQuestions.some(item => item.id === q.id)) {
             state.failedQuestions.push(q);
         }
     }
+    if (window.MathJax && MathJax.typesetPromise) {
+        MathJax.typesetPromise([feedbackArea]).catch(err => {
+            console.error('MathJax feedback rendering error:', err);
+        });
+    }
+    // 欄は締め切ったので、次の Enter は「次の問題へ」ボタンが受ける
+    focusNextButton();
+}
+
+function focusNextButton() {
+    setTimeout(() => {
+        const btn = document.getElementById('btn-next');
+        if (btn && !btn.classList.contains('hidden')) btn.focus();
+    }, 0);
 }
 
 // ==================== ヒント表示システム ====================
-function showHint() {
+async function showHint() {
     const q = state.questions[state.currentIndex];
     const hintDisplay = document.getElementById('hint-display-area');
     
-    if (state.hintCount >= q.hints.length) return;
+    if (state.isAnswered || state.hintCount >= q.hints.length) return;
 
-    if (state.hintCount === q.hints.length - 1 && !confirm('答えのヒントを表示すると、この問題は不正解になります。表示しますか？')) {
-        return;
+    if (state.hintCount === q.hints.length - 1) {
+        const ok = await showConfirm({ title: '答えを見る？', message: '次のヒントは答えだよ！\n見ると不正解（ギブアップ）になります。', okText: '見る', danger: true });
+        if (!ok || state.isAnswered) return;
     }
     
     hintDisplay.classList.add('active');
@@ -575,7 +584,8 @@ function showHint() {
         if (hintText.includes('⚠️')) {
             currentHintHtml += `<div class="hint-warning">${hintText}</div>`;
         } else {
-            currentHintHtml += `<div class="hint-item"><span class="hint-num">ヒント${i + 1}:</span> ${hintText}</div>`;
+            const isAnswer = i === q.hints.length - 1;
+            currentHintHtml += `<div class="hint-item${isAnswer ? ' hint-answer' : ''}"><span class="hint-num">${isAnswer ? '答え' : `ヒント${i + 1}`}:</span> ${hintText}</div>`;
         }
     }
     
@@ -596,10 +606,10 @@ function showHint() {
         // 最後のヒント（答え）を表示した場合はギブアップ扱いにする
         state.isAnswered = true;
         const answerInput = document.getElementById('answer-input');
-        answerInput.disabled = true;
-        answerInput.readOnly = true;
-        answerInput.setAttribute('read-only', '');
-        answerInput.setAttribute('contenteditable', 'false');
+        lockAnswerField(answerInput);
+        nextReadyAt = Date.now() + NEXT_GUARD_MS;
+        const typed = answerInput.value || '';
+        showGiveUpFeedback(q, typed);
         
         document.getElementById('btn-check').classList.add('hidden');
         document.getElementById('btn-next').classList.remove('hidden');
@@ -608,11 +618,13 @@ function showHint() {
         // 誤答レコードとして追加
         const record = {
             questionText: q.text,
-            userAnswer: 'ギブアップ（答えを確認）',
-            correctAnswer: `\\(${q.correctAnswers[0].replace('y=', 'y = ')}\\)`,
-            isCorrect: false
+            userAnswer: typed.trim() ? `\\(${displayLatex(typed)}\\)（ギブアップ）` : 'ギブアップ（答えを確認）',
+            correctAnswer: `\\(${correctLatex(q)}\\)`,
+            isCorrect: false,
+            status: 'gaveUp'
         };
         state.answers.push(record);
+        focusNextButton();
         
         if (!state.failedQuestions.some(item => item.id === q.id)) {
             state.failedQuestions.push(q);
@@ -636,8 +648,8 @@ function nextQuestion() {
     }
 }
 
-function quitDrill() {
-    if (confirm('ドリルを中断してホームに戻りますか？そこまでの記録は保存されません。')) {
+async function quitDrill() {
+    if (await showConfirm({ title: 'ホームに戻る？', message: 'ドリルを中断します。そこまでの記録は保存されません。', okText: '戻る' })) {
         goHome();
     }
 }
@@ -727,8 +739,9 @@ function buildReviewList() {
         const item = document.createElement('div');
         item.className = 'review-item';
         
-        const statusText = ans.isCorrect ? '正解' : 'まちがい';
-        const statusClass = ans.isCorrect ? 'correct' : 'wrong';
+        const isTri = ans.status === 'negDenominator';
+        const statusText = ans.isCorrect ? '正解' : (isTri ? 'おしい（0点）' : 'まちがい');
+        const statusClass = ans.isCorrect ? 'correct' : (isTri ? 'partial' : 'wrong');
         
         // ユーザー解答のスタイル調整
         const userAnsClass = ans.isCorrect ? 'correct' : 'user-wrong';
